@@ -1,0 +1,47 @@
+Akıllı Deniz Filosu Telemetri ve Yönetim Sistemi (SaaS)
+​1. Donanım Mimarisi (Hardware Stack)
+​Cihaz, tuzlu su ortamına (IP68), yüksek titreşime ve deniz motorlarının dengesiz akım dalgalanmalarına (Load Dump) dayanacak endüstriyel sınıf bileşenlerden oluşmalıdır.
+​A. Mikrodenetleyici ve İşlem Birimi (MCU)
+​Ana İşlemci: STMicroelectronics STM32L4 serisi (32-bit ARM Cortex-M4). Düşük güç tüketimi (yatlar kışlarken aküyü bitirmemesi için kritik) ve yüksek işlem gücü sunar.
+​Güvenlik Çipi (Secure Element): Microchip ATECC608B. Cihazın kimlik doğrulama anahtarlarını donanımsal olarak saklar. Klonlanmayı imkansız hale getirir.
+​B. İletişim ve Konumlandırma
+​Hücresel Modem (Cellular): u-blox SARA-R5 (LTE-M / NB-IoT modülü). Düşük bant genişliğinde kesintisiz veri sağlar, 2G/3G'ye göre çok daha az enerji harcar.
+​e-SIM (eUICC) Entegrasyonu: ST4SIM-200M. Fiziksel SIM kart yuvası sızıntı ve korozyon riskidir. PCB'ye gömülü bu çip ile cihaz dünyanın her yerinde operatör değiştirebilir.
+​GNSS (Konum): u-blox NEO-M9N. Aynı anda 4 uydu sisteminden (GPS, Galileo, GLONASS, BeiDou) veri alarak yatların ve jetski'lerin konumunu 1.5 metre hassasiyetle çizer.
+​C. Kullanıcı Deneyimi (Keyless Entry & NFC)
+​NFC Kontrolcüsü: NXP PN7150. Apple Wallet ve Google Wallet protokollerini destekler. Müşteri, telefonunu (veya akıllı saatini) cihaza veya teknenin konsolundaki okuyucuya yaklaştırdığında kiralama süreci donanımsal olarak başlatılır ve motor kilidi açılır (Ignition Unlock).
+​D. Güç Yönetimi ve Elektronik Koruma (Kritik Devreler)
+​Deniz motorlarının marş basma anındaki voltaj sıçramaları elektronikleri yakar. Bunu önlemek için askeri sınıf bir güç devresi şarttır:
+​TVS Diyotları (Geçici Voltaj Bastırıcı): Güç girişinde Littelfuse SMAJ33A serisi çift yönlü TVS diyotları. Motordan gelebilecek 60V-100V'luk anlık "Load Dump" sıçramalarını absorbe eder.
+​Optokuplör (İzolasyon): Aracın motor beynine veya rölelerine gidecek tetikleme sinyalleri (motor durdurma vb.) PC817 veya türevi optokuplörler ile elektriksel olarak izole edilir. Karttaki olası bir kısa devre yatın elektroniklerine zarar veremez.
+​Voltaj Regülatörü (Buck Converter): Texas Instruments LM5164. 100V'a kadar giriş alabilen, deniz aracının 12V/24V dalgalı aküsünü sistem için kusursuz bir 3.3V seviyesine düşüren yüksek verimli dönüştürücü.
+​Yedek Batarya: Kasa içine entegre Lityum Polimer (LiPo) pil ve şarj devresi (TP4056). Akü kabloları kesilse bile cihaz günlerce konum ve güvenlik ihlali verisi göndermeye devam eder.
+​2. Yazılım Katmanı (Software Stack)
+​A. Gömülü Yazılım (Firmware)
+​İşletim Sistemi: FreeRTOS (Gerçek Zamanlı İşletim Sistemi). C/C++ ile yazılır. Modemin veri yollaması, GPS'in konum okuması ve NFC'nin tepki vermesi aynı anda, kilitlenmeden gerçekleşir.
+​Haberleşme Protokolü: MQTT (Message Queuing Telemetry Transport). TLS 1.2 şifreleme ile paketlenir. HTTP'ye göre %80 daha az veri harcar, çekimin zayıf olduğu koylarda bile veri paketlerinin kaybolmasını önler.
+​OTA (Over-The-Air): Cihazları sahaya sürdükten sonra uzaktan yazılım güncelleme mekanizması.
+​B. Bulut ve Sunucu Mimarisi (Backend & Database)
+​Bu kısım sizin "Süper Admin" olarak her şeyi yöneteceğiniz asıl motor gücüdür.
+​Mesaj Aracısı (Broker): EMQX veya Mosquitto. Saniyede binlerce cihazdan gelen MQTT verilerini (hız, konum, akü durumu) karşılar ve veritabanına aktarır.
+​Veritabanı Mimarisi (Hibrit):
+​PostgreSQL: Kiracı (Tenant) şirketlerin bilgileri, müşteri kayıtları, faturalandırma ve araç envanterini tutmak için (İlişkisel veri).
+​TimescaleDB veya InfluxDB: Milyonlarca satırlık zaman serisi verisi için (Araçların saniye saniye hız ve konum geçmişi).
+​Backend Framework: Node.js (NestJS) veya Go (Golang). Binlerce anlık websocket ve soket bağlantısını yorulmadan kaldırabilen mikroservis mimarisi.
+​C. Kullanıcı Arayüzleri (Frontend / Paneller)
+​Web Yönetim Paneli (Super Admin & Şirket Panelleri): React.js veya Vue.js ile geliştirilmiş, Single Page Application (SPA).
+​Harita Entegrasyonu: Google Maps API veya Mapbox GL JS (Araçları canlı izleme, sanal çit - geofence çizme).
+​Masaüstü (PC) ve Mobil Uyumluluk: Web paneli PWA (Progressive Web App) olarak tasarlanır; şirket sahipleri ister bilgisayarlarında bir masaüstü uygulaması gibi, ister tabletlerinde akıcı bir şekilde kullanabilir.
+​3. Sistem İşleyişi: Multi-Tenant (Çoklu Kiracı) Yapısı
+​Yazılımın temel iş kurgusu şu hiyerarşide çalışır:
+​Süper Admin (Siz): Platformun sahibisiniz. Sisteme yeni "Şirketler" (Yat kiralama, Jet Ski kiralama, Tekne Turu firmaları) eklersiniz. Cihazların OTA güncellemelerini yönetir ve şirketlerden aylık lisans/hizmet bedeli alırsınız.
+​Müşteri Şirket Paneli (Tenant): X Yat Kiralama şirketi kendi hesabıyla giriş yapar. Sadece kendi satın aldığı cihazları ve araçları görür.
+​Harita üzerinde sanal sınırlar (Geofence) çizer. (Örn: "Yat Yunan sularına yaklaşırsa veya marinadan izinsiz ayrılırsa alarm ver").
+​Araçlarını kiralayan kişilere süre tanımlar. Süre bittiğinde motorun gücünü uzaktan %20'ye düşürüp "marinaya dön" protokolünü başlatabilir.
+​Son Kullanıcı (Aracı Kiralayan): Apple/Google Wallet üzerinden dijital anahtarını okutur, kiralama sözleşmesi dijital olarak onaylanır ve aracın yetkilisi olur.
+​4. Temel Özellikler Özeti
+​Gerçek Zamanlı İzleme & Telemetri: Konum, hız, akü voltajı, kontak durumu (Açık/Kapalı).
+​NFC Cüzdan ile Anahtarsız Giriş: Kiralama süreçlerini fiziksel anahtardan kurtarma.
+​Uzaktan Motor Blokajı: Hırsızlık veya süre aşımı durumunda motor rölesini kesme.
+​Geofencing (Sanal Çit): Belirlenen rotanın dışına çıkıldığında şirket paneline uyarı düşmesi.
+​Sabotaj Algılama: Cihazın güç kablosu kesilirse dahili pille acil durum (SOS) paketi gönderme.
